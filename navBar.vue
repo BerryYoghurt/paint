@@ -3,8 +3,12 @@
     <div class="box">
         <div class="box-compon" id="save" @click="tool('save')">
           <img src="https://img.icons8.com/ultraviolet/40/000000/save-as.png" style="height:58%;position: relative;margin:13%;"/></div>
-        <div class="box-compon" id="load" @click="tool('load')">
-         <img src="https://img.icons8.com/nolan/64/load-cargo.png" style="height:58%;position: relative;margin:13%;"/></div>
+      
+           <label class="box-compon" id="load" style="height:68px" > 
+             <img src="https://img.icons8.com/nolan/64/load-cargo.png" style="height:58%;position: relative;margin:13%;"/>
+           <input id="filePick" type="file" accept=".json, .xml" @click="tool('load')">
+           </label>
+        
         <div class="box-compon" id="undo" @click="tool('undo')">
           <img src="https://img.icons8.com/nolan/64/undo.png" style="height:58%;position: relative;margin:13%;"/>
         </div>
@@ -19,6 +23,9 @@
         </div>
         <div class="box-compon" id="rectangle" @click="tool('rectangle')">
           <img src="https://img.icons8.com/nolan/64/rectangle.png" style="height:68%;position: relative;margin:13%;"/>
+        </div>
+        <div class="box-compon" id="square" @click="tool('square')">
+          <img src="https://img.icons8.com/nolan/64/rounded-square.png" style="height:68%;position: relative;margin:13%;"/>
         </div>
         <div class="box-compon" id="circle" @click="tool('circle')">
           <img src="https://img.icons8.com/nolan/64/filled-circle.png" style="height:68%;position: relative;margin:13%;"/>
@@ -54,7 +61,7 @@ export default {
    //current shape location for move/resize/copy
    shapeInActionLocation:-1,
    //refrence to a resized shape
-   fixed:'',
+   fixed:'',holdedColor:'#ffffff',br:'',
    //mouse location
    mouseup:{x:0,y:0},mousedown:{x:0,y:0},
    //current location of the mouse
@@ -63,7 +70,7 @@ export default {
    ctx:'',savedImageData:'',
    dragging:false,
    //Arrays to held App's shapes
-   shapes:[],shapedRedo:[],
+   shapes:[],shapedRedo:[],uploadedFile:null,
    fillColor:null,borderColor:'#000000',
    linwidth:2,canvasWidth:1320,canvasHeight:612,
    bounds:{
@@ -80,6 +87,7 @@ export default {
       document.getElementById("line").className = "box-compon";
       document.getElementById("triangle").className = "box-compon";
       document.getElementById("rectangle").className = "box-compon";
+      document.getElementById("square").className = "box-compon";
       document.getElementById("circle").className = "box-compon";
       document.getElementById("ellipse").className = "box-compon";
       document.getElementById("copy").className = "box-compon";
@@ -99,37 +107,149 @@ export default {
       }
       else if(selectedTool==='save'){
       //some stuff
+      this.save();
       }
       else if(selectedTool==='load'){
       //some stuff
+      ///this.load();
       }
     },
 
+
+    
+save:function(){
+      //Assuming my version of backend
+      const link = this.URL+'/save';
+      let needjson = confirm("Save as JSON? OK == yes, json, Cancel == no, xml");
+      fetch(link,{
+          method:'GET',
+          headers:{
+            'Accept':needjson?'application/json':'application/xml',
+            'mode':'no-cors'
+          }
+          }).then(
+            r => r.blob()
+              ).then(function (data){
+                let filename = needjson?"canvas.json":"canvas.xml";
+                if(window.navigator.msSaveOrOpenBlob) {
+                  window.navigator.msSaveBlob(data, filename);
+                }
+                else{
+                  var elem = window.document.createElement('a');
+                  elem.href = window.URL.createObjectURL(data);
+                  elem.download = filename;
+                  document.body.appendChild(elem);
+                  elem.click();
+                  document.body.removeChild(elem);
+                }
+              
+      });
+    },
+    load:function(event){
+      //Assuming the request format in my version of the backend:
+      const link = this.URL+"/upload";
+      const file = event.target.files[0];
+      fetch(link, {
+        method:'POST',
+        headers:{
+          'Content-Type': file.type,
+          'mode':'no-cors'
+        },
+        body:file
+      }).then(
+          data => {
+          this.reset(data)
+          let url=this.URL+'/get'
+           fetch(url).then(
+          response =>{return response.json()}).then(data =>{
+            this.br=this.convertArr(data);
+            //perform the operation in the frontend   
+            this.shapes=this.br; 
+            console.log(data.length);
+            this.displayShapes();
+            this.SaveCanvasImage();
+            this.RedrawCanvasImage();
+          })
+          }
+      );
+    },
+    reset:function(response){
+      //TODO reset app and parse response
+      console.log(response);
+      this.shapes=[]
+      this.displayShapes();
+      this.SaveCanvasImage();
+      this.RedrawCanvasImage();
+    },
     undo:function(){
         /////////////////////////////////////////////////////////////
         //backend stuff
         if(this.shapes.length>0){
         //report the undo process to the backend
-        let url=this.URL+'/paintapp/undo'
+        let url=this.URL+'/undo'
         fetch(url).then(
-                      response => { return response.json();})
+                      response => { return response.json();}).then(
+                      data => {
+                        this.br=this.convertArr(data);
+                        //console.log(this.br[0]._color);
+                        this.shapes=this.br;
+                        //console.log(this.shapes.length+' '+this.shapes);  
+                        this.displayShapes();
+                        this.SaveCanvasImage();
+                        this.RedrawCanvasImage();
+                      }
+                      )
         //perform the operation in the frontend
-        this.shapedRedo.push(this.shapes.pop())}
-        this.displayShapes();
-        console.log("aaa"+this.shapes.length+' '+this.shapes);
+        }
 
     },
     redo:function(){
         /////////////////////////////////////////////////////////////
         //backend stuff
-        if(this.shapedRedo.length>0){
+
         //report the redo process to the backend
-        let url=this.URL+'/paintapp/redo'
+        let url=this.URL+'/redo'
         fetch(url).then(
-                      response => { return response.json(); })
-        //perform the operation in the frontend
-        this.shapes.push(this.shapedRedo.pop())}
-        this.displayShapes();
+                      response => { return response.json();}).then(
+                      data => {
+                        this.br=this.convertArr(data);
+                        //perform the operation in the frontend   
+                        this.shapes=this.br; 
+                        this.displayShapes();
+                        this.SaveCanvasImage();
+                        this.RedrawCanvasImage();
+                      }
+                      )
+    },
+    //convert array of shapes from backend fromat to frontend format
+    convertArr:function(arr){
+    let _hold=[];
+    arr.forEach(elem =>{
+      //prepare the elements of the object
+      let _id=elem.id;
+      let _type=elem.type;
+      let _fillColor='#'+elem.fillColor;
+      let _mousedown={x:elem.f_x1,y:elem.f_y1}
+      let _mouseup={x:elem.f_x2,y:elem.f_y2}
+      let _dim={x:elem.boundingBox_left,y:elem.boundingBox_top,
+      width:elem.width,height:elem.height}
+     //check odd cases
+     if(elem.type==='circle'||elem.type==='square'){
+       _dim.x=Math.min(_mousedown.x,_mouseup.x);
+       _dim.y=Math.min(_mousedown.y,_mouseup.y);
+       _dim.width=elem.width/2;
+       _dim.height=elem.width/2;
+    }
+    //adjust the ellipse shape
+    else if(elem.type==='ellipse'){
+       _dim.x=Math.min(_mousedown.x,_mouseup.x);
+       _dim.y=Math.min(_mousedown.y,_mouseup.y);
+       _dim.width=elem.width/2;
+       _dim.height=elem.height/2;
+    }
+    _hold.push({dim:_dim,type:_type,id:_id,_color:_fillColor,mouse_up:_mouseup,mouse_down:_mousedown})
+    })
+    return _hold;
     },
     //get position relative to cavan's panel
     getPosition: function(x,y){
@@ -185,16 +305,19 @@ export default {
       }}
     //check if user gone out of canvas then back
     else{
-     this.setMouseUp("mouseup");
+     //this.setMouseUp("mouseup");
     }
     },
       //get the ID of the shape corresponding to mouse click an assign it to shapeInAction 
       //and make some stuff based on the method passed to it
       //backend stuff
     getShapeBack:function(_location,mthd){
-      let url=this.URL+'/paintapp/getId/'+
-      [_location.x].toString+'/'+[_location.y].toString;
+      /*let url=this.URL+'/getId/'+
+      [_location.x].toString+'/'+[_location.y].toString;*/
+      let url=this.URL+'/getId/'+
+      _location.x+'/'+_location.y;
       this.shapeInActionLocation=-1;
+                                 console.log(url)
       fetch(url).then(
             response => { return response.json(); }).then(
                 data =>{
@@ -210,19 +333,19 @@ export default {
                   this.setColor(this.shapeInActionLocation,this.fillColor.value);
                   //refresh the image
                   this.displayShapes();
-                  //send changes to the backend
-                  let url_=this.URL+'/paintapp/colorfill/'+[this.shapes[this.shapeInActionLocation].id].toString
-                  +'/'+[this.fillColor.value].toString;
+                  //send changes to the backend ctx.fillColor
+                  let url_=this.URL+'/colorfill/'+this.shapes[this.shapeInActionLocation].id
+                  +'/'+this.fillColor.value.replace("#", "");
                   fetch(url_).then(
                       response => { return response.json(); })}
                   //////////////////////////////////////////////////////////////////
                   else if(mthd==='delete'&&this.shapeInActionLocation>-1){
                   //delete shape from front end
+                  let url_=this.URL+'/delete/'+this.shapes[this.shapeInActionLocation].id;
                   this.deleteShape(this.shapeInActionLocation);
                   //update the image
                   this.displayShapes();
                   //send changes to backend
-                  let url_=this.URL+'paintapp/delete/'+[this.shapes[this.shapeInActionLocation].id].toString
                   fetch(url_).then(
                       response => { return response.json(); })
                   }
@@ -242,6 +365,10 @@ export default {
                   dummyDim.x=holder.dim.x-(holder.mouse_down.x-(holder.dim.width+20));
                   dummyDim.y=holder.dim.y-(holder.mouse_down.y-(holder.dim.height+20));
                   }
+                  else if(holder.type==='square'){
+                  dummyDim.x=holder.dim.x-(holder.mouse_down.x-(holder.dim.width+20));
+                  dummyDim.y=holder.dim.y-(holder.mouse_down.y-(holder.dim.width+20));
+                  }
                   //update the location of the mouse clicks
                   let dumMouseDown={x:holder.mouse_down.x-(holder.dim.x-20),
                                     y:holder.mouse_down.y-(holder.dim.y-20)}
@@ -259,6 +386,12 @@ export default {
                   dumMouseUp.x=holder.mouse_up.x-(holder.mouse_down.x-(holder.dim.width+20));
                   dumMouseUp.y=holder.mouse_up.y-(holder.mouse_down.y-(holder.dim.height+20));
                   }
+                  else if(holder.type==='square'){
+                  dumMouseDown.x=holder.dim.width+20;
+                  dumMouseDown.y=holder.dim.width+20;
+                  dumMouseUp.x=holder.mouse_up.x-(holder.mouse_down.x-(holder.dim.width+20));
+                  dumMouseUp.y=holder.mouse_up.y-(holder.mouse_down.y-(holder.dim.width+20));
+                  }
                   holder.dim=dummyDim;
                   holder.mouse_down=dumMouseDown;
                   holder.mouse_up=dumMouseUp;
@@ -273,11 +406,13 @@ export default {
                    let _holder=Object.assign({},this.shapes[this.shapeInActionLocation]);
                    //prevent the holded shape from being drawn
                    this.shapes[this.shapeInActionLocation].type='dummy'
+                   this.holdedColor=_holder._color;
                    this.displayShapes();
                    this.SaveCanvasImage();
                    this.RedrawCanvasImage();
                    //return the refrence to the selected object
                    this.shapes[this.shapeInActionLocation]=_holder;
+                   console.log(this.holdedColor)
                  }
                 else if(mthd==='resize'&&this.shapeInActionLocation>-1){
                    //hold the old shape
@@ -285,6 +420,7 @@ export default {
                    this.current=this.shapes[this.shapeInActionLocation].type;
                    //prevent current shape from being drawn
                    this.shapes[this.shapeInActionLocation].type='dummy'
+                   this.holdedColor=this.fixed._color;
                    this.displayShapes();
                    this.SaveCanvasImage();
                    this.RedrawCanvasImage();
@@ -330,6 +466,7 @@ export default {
         this.updateboundsActive(this.loc);}
       }
       if(this.current==='move'&&this.shapeInActionLocation>-1){
+        //if(this.shapes[this.shapeInActionLocation].type)
         this.shapes[this.shapeInActionLocation].mouse_up.x=this.shapes[this.shapeInActionLocation].mouse_up.x
         -(this.shapes[this.shapeInActionLocation].dim.x-this.loc.x);
         this.shapes[this.shapeInActionLocation].mouse_up.y=this.shapes[this.shapeInActionLocation].mouse_up.y
@@ -340,6 +477,7 @@ export default {
         -(this.shapes[this.shapeInActionLocation].dim.y-this.loc.y);
         this.shapes[this.shapeInActionLocation].dim.x=this.loc.x;
         this.shapes[this.shapeInActionLocation].dim.y=this.loc.y;
+
         this.RedrawCanvasImage();
         this.drawShapeAction(this.shapes[this.shapeInActionLocation]);
       }
@@ -374,7 +512,9 @@ export default {
       else if(typ==='rectangle'){
       this.ctx.strokeRect(dims.x,dims.y,dims.width,dims.height);
       }
-
+      else if(typ==='square'){
+      this.ctx.strokeRect(_mousedown.x-dims.width,_mousedown.y-dims.width,dims.width*2,dims.width*2);
+      }
       else if(typ==='circle'){
         let radius=dims.width;
         this.ctx.beginPath();
@@ -393,6 +533,8 @@ export default {
       this.SaveCanvasImage();
       this.RedrawCanvasImage();
       }
+      this.SaveCanvasImage();
+      this.RedrawCanvasImage();
       },
     setMouseUp: function(event){
       this.canvas.style.cursor="default";
@@ -401,14 +543,15 @@ export default {
       this.RedrawCanvasImage();
       this.updatebounds(this.loc);
       this.mouseup=this.loc;
-      ////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////// console
       //insert shapes and sent them to backend if there was a shape
-      if(('circlelinetriangleellipserectangle'.includes(this.current))&&(!isNaN(this.bounds.x))&&(this.dragging))
+      if(('circlelinetriangleellipserectanglesquare'.includes(this.current))&&(!isNaN(this.bounds.x))&&(this.dragging))
       {
       if(this.fixed===''){  
       this.insertShape();
       this.__sendBack(this.shapes[this.shapes.length-1],'copy')}
       else if(this.fixed!=''){
+        console.log([this.current,this.shapeInActionLocation])
       if(this.shapeInActionLocation>-1){
       this.shapes[this.shapeInActionLocation]=this.getShape();
       this.shapes[this.shapeInActionLocation].id=this.fixed.id;
@@ -416,21 +559,26 @@ export default {
       this.displayShapes();
       this.RedrawCanvasImage();
       this.SaveCanvasImage();
-
+      this.__sendBack(this.shapes[this.shapeInActionLocation],'resize');
       }
       this.current='resize';
+      this.holdedColor='#ffffff'
       }
       }
-      else if((this.current==='move'||this.current==='resize')&&this.shapeInActionLocation>-1){
+      else if((this.current==='move')&&this.shapeInActionLocation>-1){
         //@PutMapping("/move/{id}/{x}/{y}/{width}/{height}/{f_x1}/{f_y1}/{f_x2}/{f_y2}")
-        //("/resize/{id}/{x}/{y}/{width}/{height}/{f_x1}/{f_y1}/{f_x2}/{f_y2}")
+        //("/resize or,move/{id}/{x}/{y}/{width}/{height}/{f_x1}/{f_y1}/{f_x2}/{f_y2}")
         //send new information to the backend
         //need to update
-        this.__sendBack(this.shapes[this.shapeInActionLocation]);
+        this.displayShapes();
+        this.RedrawCanvasImage();
+        this.SaveCanvasImage();
+        this.__sendBack(this.shapes[this.shapeInActionLocation],this.current);
       }
       this.shapeInActionLocation=-1;
       this.fixed='';
       this.dragging=false;
+      this.holdedColor='#ffffff';
     },
       //get a shape object from current data
       //shape on format of {dim:x,y upperleft,width,height of the bounding box,type,id,color,mouseup,mousedown}
@@ -455,7 +603,7 @@ export default {
     ////////////backend
     let url;
     if(mthd==='copy')
-    { url=this.URL+'/paintapp/add';}
+    { url=this.URL+'/add';}
     //adjust the shape object to the controller in backend
     //boundingBox_top assumed as y's in top left corner
     //left assumed as x's in top left corner
@@ -469,7 +617,7 @@ export default {
     let boundWidth=_shape.dim.width;
     let boundHeight=_shape.dim.height;
     //adjust the circle shape
-    if(_shape.type==='circle'){
+    if(_shape.type==='circle'||_shape.type==='square'){
        boundTop=_shape.mouse_down.y-_shape.dim.width;
        boundLeft=_shape.mouse_down.x-_shape.dim.width;
        boundWidth=_shape.dim.width*2;
@@ -484,15 +632,16 @@ export default {
     }
     //prepare the object
     let dat={id:_shape.id,type:_shape.type,lineColor:this.borderColor,
-    fillColor:_shape._color,boundingBox_top:boundTop,
+    fillColor:_shape._color.replace("#",""),boundingBox_top:boundTop,
     boundingBox_left:boundLeft,width:boundWidth,
     height:boundHeight,f_x1:fx1,f_y1:fy1,f_x2:fx2,f_y2:fy2}
     if(mthd!='copy'){
-      url=this.URL+'/paintapp/'+mthd+'/'+[dat.id].toString+'/'
-        +[dat.boundingBox_left].toString+'/'+[dat.boundingBox_top].toString
-        +'/'+[dat.width].toString+'/'+[dat.height].toString+'/'+
-        [dat.f_x1].toString+'/'+[dat.f_y1].toString
-        +'/'+[dat.f_x2].toString+'/'+[dat.f_y2].toString
+      if(mthd==='move'){mthd='resize';}
+      url=this.URL+'/'+mthd+'/'+dat.id+'/'
+        +dat.boundingBox_left+'/'+dat.boundingBox_top
+        +'/'+dat.width+'/'+dat.height+'/'+
+        dat.f_x1+'/'+dat.f_y1
+        +'/'+dat.f_x2+'/'+dat.f_y2
     }
     //send the shape to backend
     if(mthd==='copy'){
@@ -529,11 +678,25 @@ export default {
     drawShape: function(){
       this.ctx.strokeStyle=this.borderColor;
       this.ctx.lineWidth = this.linwidth;
-        ////////////////////////////////////////////
+    let flg=(this.holdedColor!='#ffffff'&&(this.current==='move'||(this.fixed!=''&&this.shapeInActionLocation>-1)))
+    if(flg){
+      this.ctx.fillStyle=this.holdedColor;
+    }
       if(this.current==='rectangle'){
+        if(flg){
+           this.ctx.fillRect(this.bounds.x,this.bounds.y,
+                this.bounds.width,this.bounds.height)}
       this.ctx.strokeRect(this.bounds.x,this.bounds.y,this.bounds.width,this.bounds.height);
       //color in 129////////////
       }
+      
+      else if(this.current==='square'){
+        if(flg){ this.ctx.fillRect(this.mousedown.x-this.bounds.width,
+        this.mousedown.y-this.bounds.width,this.bounds.width*2,this.bounds.width*2);}
+        this.ctx.strokeRect(this.mousedown.x-this.bounds.width,
+        this.mousedown.y-this.bounds.width,this.bounds.width*2,this.bounds.width*2);
+      }
+
       else if(this.current==='line'){
         //Draw Line
         this.ctx.beginPath();
@@ -546,16 +709,18 @@ export default {
         let radius=this.bounds.width;
         this.ctx.beginPath();
         this.ctx.arc(this.mousedown.x,this.mousedown.y,
-                                      radius,0,Math.PI *2);
+                                  radius,0,Math.PI *2);
+        if(flg){this.ctx.fill();}
         this.ctx.stroke();//////////////
       }
+
       else if(this.current === "ellipse"){
         let radiusX = this.bounds.width;
         let radiusY = this.bounds.height;
         this.ctx.beginPath();
-
         this.ctx.ellipse(this.mousedown.x,this.mousedown.y,
                       radiusX, radiusY, 0, 0, Math.PI * 2);
+        if(flg){this.ctx.fill();}
         this.ctx.stroke();//////////////
       } 
 
@@ -563,6 +728,7 @@ export default {
         let polypoints = [{x:this.bounds.x+(this.bounds.width/2),y:this.bounds.y},
                              {x:this.bounds.x,y:this.bounds.y+this.bounds.height},
           {x:this.bounds.x+this.bounds.width,y:this.bounds.y+this.bounds.height}];
+          this.ctx.beginPath();
         this.ctx.beginPath();
         this.ctx.moveTo(polypoints[0].x, polypoints[0].y);
        //attach all the points of the triangle 
@@ -570,6 +736,7 @@ export default {
         this.ctx.lineTo(polypoints[i].x, polypoints[i].y);
        }
         this.ctx.closePath();
+        if(flg){this.ctx.fill();}
         this.ctx.stroke();
       }
       },
@@ -578,9 +745,24 @@ export default {
       this.ctx.strokeStyle=this.borderColor;
       this.ctx.lineWidth = this.linwidth;
         ////////////////////////////////////////////
+      let flg=(this.holdedColor!='#ffffff'&&(this.current==='move'||(this.fixed!=''&&this.shapeInActionLocation>-1)))
+      if(flg){
+      this.ctx.fillStyle=this.holdedColor;
+      }
       if(shape_.type==='rectangle'){
+      if(flg){
+        this.ctx.fillRect(shape_.dim.x,shape_.dim.y,shape_.dim.width,shape_.dim.height);
+      }
       this.ctx.strokeRect(shape_.dim.x,shape_.dim.y,shape_.dim.width,shape_.dim.height);
-      //color in 129////////////
+      //color in 129////////////  
+      }
+      else if(shape_.type==='square'){
+      if(flg){
+        this.ctx.fillRect(shape_.mouse_down.x-shape_.dim.width,shape_.mouse_down.y-shape_.dim.width,
+        shape_.dim.width*2,shape_.dim.width*2);
+      }
+      this.ctx.strokeRect(shape_.mouse_down.x-shape_.dim.width,shape_.mouse_down.y-shape_.dim.width,
+        shape_.dim.width*2,shape_.dim.width*2);
       }
       else if(shape_.type==='line'){
         //Draw Line
@@ -595,6 +777,9 @@ export default {
         this.ctx.beginPath();
         this.ctx.arc(shape_.mouse_down.x,shape_.mouse_down.y,
                                       radius,0,Math.PI *2);
+        if(flg){
+        this.ctx.fill();
+      }
         this.ctx.stroke();//////////////
       }
       else if(shape_.type === "ellipse"){
@@ -604,6 +789,8 @@ export default {
 
         this.ctx.ellipse(shape_.mouse_down.x,shape_.mouse_down.y,
                       radiusX, radiusY, 0, 0, Math.PI * 2);
+        if(flg){
+        this.ctx.fill();}
         this.ctx.stroke();//////////////
       } 
 
@@ -618,6 +805,8 @@ export default {
         this.ctx.lineTo(polypoints[i].x, polypoints[i].y);
        }
         this.ctx.closePath();
+        if(flg){
+        this.ctx.fill();}
         this.ctx.stroke();
       }
       },
@@ -631,6 +820,10 @@ export default {
         if(_shape.type==='rectangle'){
         this.ctx.fillRect(_shape.dim.x,_shape.dim.y,
                 _shape.dim.width,_shape.dim.height);
+        }
+        else if(_shape.type==='square'){
+        this.ctx.fillRect(_shape.mouse_down.x-_shape.dim.width,_shape.mouse_down.y-_shape.dim.width,
+                _shape.dim.width*2,_shape.dim.width*2);
         }
         else if(_shape.type==='circle'){
         let radius=_shape.dim.width;
@@ -694,6 +887,8 @@ _updateAll:function(event) {
 
 mounted(){
   document.addEventListener('DOMContentLoaded',this.setupCanvas);
+  this.uploadedFile = document.getElementById("filePick");
+  this.uploadedFile.addEventListener('change',(event)=>{this.load(event);});
 }
 }
 
@@ -702,11 +897,12 @@ mounted(){
 
 
 .box{
-    height:80px;
+    height:83px;
     width: 1330px;
-    background-image: linear-gradient(rgb(70, 0, 72), rgb(52, 0, 51), rgb(76, 0, 73));
+    background-image: linear-gradient(rgb(160, 160, 160), rgb(142, 142, 142),rgb(132,132,132));
     border-radius: 15px 30px 0px 0px;
-    box-shadow: 6px 6px 6px rgb(177, 0, 153) inset;
+    box-shadow: 6px 6px 6px rgb(240, 240, 240) inset;
+     /*box-shadow:         inset 3px 3px 10px #ffffff;*/
     margin: auto;
 }
 
@@ -714,29 +910,30 @@ mounted(){
 .box-compon,.box-compon-selected{
     position: relative;
     float: left;
-    width: 6.32%;
-    height: 91%;
-    margin: 3px 3px;
+    width: 5.36%;
+    height: 82%;
+    margin: 7px 6.3px;
     text-align: center;
     padding: 0px 0px;
-    box-shadow: 5px 5px 3px rgb(133, 0, 127) inset;
+    box-shadow: 5px 5px 3px rgb(152, 152, 152) inset;
+    box-shadow:         inset 0px 0px 7px #404040;
     cursor: pointer;
     outline:none;
-    border-radius: 15px 30px;
+    border-radius: 38px 38px;
 }
 
 .box-compon{
-  background-color: rgb(85, 0, 99);
+  background-color: rgb(255, 255, 255);
 }
 
 .box-compon:hover{
- background-color:rgb(114, 0, 155);
+ background-color:rgb(171, 222, 228);
  transition: all 0.36s ease;
 }
 
-
-.box-compon-selected {
-    background-color:rgb(114, 0, 155);
+.box-compon-selected{
+  background-color:rgb(171, 222, 228);
+  box-shadow:  0px 0px 7px #7b7b7b;
 }
 
 #colorPick[type=color]{
@@ -748,23 +945,22 @@ mounted(){
     text-align: center;
     padding: 0px 0px;
 }
-
 #my-canvas{
-    border: 5px solid  rgb(52, 0, 51) ;
+    border: 5px solid  rgb(132, 132, 132) ;
     border-radius: 0px 0px 10px 20px;
 }
+
+input[type="file"] {
+    display: none;
+}
+.custom-file-upload {
+    border: 1px solid #ccc;
+    display: inline-block;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
 </style>
-
-
-
-
-
-
-
-
-
-
-
 
 
 
